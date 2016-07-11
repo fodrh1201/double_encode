@@ -1,4 +1,5 @@
 import _pickle as cPickle
+import numpy as np
 import os
 import collections
 import itertools
@@ -77,3 +78,14 @@ class DataUtil:
                 raise Error("Invalid pad_location. Specify LEFT or RIGHT.")
             result.append(new_sentence)
         return result
+
+    def get_features(self):
+        features = []
+        clips_path = self.get_clips_path()
+        for clip, path in clips_path.items():
+            with open(path, 'rb') as f:
+                feature = cPickle.load(f, encoding='latin1')
+                features.append(feature.reshape(-1))
+        return np.array(features)
+
+
