@@ -4,13 +4,14 @@ import os
 import collections
 import itertools
 
+
 class DataUtil:
 
     def __init__(self,
-                 data_feature = 'googlenet',
-                 data_set = 'imagenet',
-                 clip_sentence_path = '/data/movieQA/story/movie_clip_sentences_proc_sb.pkl',
-                 feature_path = '/data/movieQA/story/video_feature/'):
+                 data_feature='googlenet',
+                 data_set='imagenet',
+                 clip_sentence_path='/data/movieQA/story/movie_clip_sentences_proc_sb.pkl',
+                 feature_path='/data/movieQA/story/video_feature/'):
 
         self.data_feature = data_feature
         self.data_set = data_set
@@ -87,5 +88,3 @@ class DataUtil:
                 feature = cPickle.load(f, encoding='latin1')
                 features.append(feature.reshape(-1))
         return np.array(features)
-
-
