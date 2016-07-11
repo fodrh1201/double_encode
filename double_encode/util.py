@@ -88,3 +88,12 @@ class DataUtil:
                 feature = cPickle.load(f, encoding='latin1')
                 features.append(feature.reshape(-1))
         return np.array(features)
+
+    def get_cluster_indices(self, max_length=None):
+        counts = self.get_sent_list_count()
+        end = 0
+        ranges = []
+        for i in counts:
+            ranges.append((end, end+i))
+            end += i
+        return [list(range(start, end)) for start, end in ranges]
