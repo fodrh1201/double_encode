@@ -57,7 +57,7 @@ class DataUtil:
         sents2d = self.get_clips_sents().values()
         return list(itertools.chain(*sents2d))
 
-    def pad_sents(self, pad_token=9485, pad_location="RIGHT", max_length=None):
+    def get_pad_sents(self, pad_token=9485, pad_location="RIGHT", max_length=None):
         sequences = self.get_sents()
 
         if not max_length:
