@@ -184,4 +184,16 @@ class RNNEncoderTrainer:
     def __init__(self, model, optimizer=None, train_summary_dir=None, sess=None, max_grad_norm=5):
         sess = sess or tf.get_default_session()
         self.model = model
+        with tf.variable_scope("training"):
+            self.global_step = tf.Variable(0, name="global_step", trainable=False)
+
+            tvars = tf.trainable_variables()
+            grads, _ = tf.clip_by_global_norm(tf.gradients(model.total_loss, tvars), max_grad_norm)
+            self.optimizer = optimizer or tf.train.AdamOptimizer()
+            self.train_op = self.optimizer.apply_gradients(zip(grads, tvar), global_step=self.global_step)
+
+            summary_total_loss = tf.scalar_summary("total_loss", model.total_loss)
+            self.train_summary_writer = None
+            if train_summary_dir is not None:
+                self.train_summary_writer = tf.train.SummaryWriter(train_summary_dir, sess.graph_def)
 
