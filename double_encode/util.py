@@ -71,6 +71,8 @@ class DataUtil:
             num_padding = max_length - len(sentence)
             if num_padding == 0:
                 new_sentence = sentence
+            elif num_padding < 0:
+                new_sentence = sentence[:max_length]
             elif pad_location == "RIGHT":
                 new_sentence = sentence + [pad_token] * num_padding
             elif pad_location == "LEFT":

@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 import util
 from model_saver import ModelSaver
-from tensorflow.models.rnn import rnn_cell
+from tensorflow.python.ops import rnn_cell
 
 
 class RNNEncoder(ModelSaver):
@@ -38,7 +38,7 @@ class RNNEncoder(ModelSaver):
                  embedding_dim=256,
                  hidden_dim=256,
                  num_layers=2,
-                 cell_class="LSTM"
+                 cell_class="LSTM",
                  dropout_keep_prob_s_output=1.0,
                  dropout_keep_prob_f_output=1.0,
                  dropout_keep_prob_cell_input=1.0,
@@ -100,18 +100,18 @@ class RNNEncoder(ModelSaver):
                 "W",
                 [self.vocabulary_size, self.embedding_dim],
                 initializer=tf.random_uniform_initializer(-1.0, 1.0))
-            self.embbeded_chars = tf.nn.embedding_lookup(W, input_sents)
+            self.embbeded_chars = tf.nn.embedding_lookup(W, self.input_sents)
             self.embedded_chars_drop = tf.nn.dropout(self.embbeded_chars, self.dropout_keep_prob_embedding_t)
 
         with tf.variable_scope("rnn") as scope:
             # RNN cell
-            cell_class = self.cell_class_map(self.cell_class)
+            cell_class = self.cell_class_map[self.cell_class]
             one_cell = rnn_cell.DropoutWrapper(
                 cell_class(self.hidden_dim),
                 input_keep_prob=self.dropout_keep_prob_cell_input_t,
                 output_keep_prob=self.dropout_keep_prob_cell_output_t)
             self.cell = rnn_cell.MultiRNNCell([one_cell] * self.num_layers)
-            self.initial_state = tf.zeros([self.batch_size, self.cell.state_size])
+            self.initial_state = tf.zeros([self.input_sents.get_shape()[0], self.cell.state_size])
             self.rnn_states = [self.initial_state]
             self.rnn_outputs = []
             for i in range(self.sequence_length):
@@ -152,7 +152,7 @@ class RNNEncoder(ModelSaver):
             sents_size = self.s_output.get_shape()[0]
             total_loss = tf.Variable(0.0, dtype=tf.float32, name="total_loss")
             for i in range(features_size):
-                if self.input_indices == []:
+                if self.input_indices[i] == []:
                     continue
                 else:
                     feature = tf.nn.embedding_lookup(self.f_output, i)
@@ -175,5 +175,13 @@ class RNNEncoder(ModelSaver):
             for j in range(wrong_s.get_shape()[0]):
                 s1 = tf.nn.embedding_lookup(corr_s, i)
                 s2 = tf.nn.embedding_lookup(wrong_s, j)
-                loss += tf.maximum(0, margin - s1 + s2)
+                loss += tf.maximum(tf.constant(0.0, dtype=tf.float32), margin - s1 + s2)
         return loss
+
+
+class RNNEncoderTrainer:
+
+    def __init__(self, model, optimizer=None, train_summary_dir=None, sess=None, max_grad_norm=5):
+        sess = sess or tf.get_default_session()
+        self.model = model
+
