@@ -193,7 +193,26 @@ class RNNEncoderTrainer:
             self.train_op = self.optimizer.apply_gradients(zip(grads, tvar), global_step=self.global_step)
 
             summary_total_loss = tf.scalar_summary("total_loss", model.total_loss)
+            self.train_summaries = tf.merge_summary([summary_total_loss])
             self.train_summary_writer = None
             if train_summary_dir is not None:
                 self.train_summary_writer = tf.train.SummaryWriter(train_summary_dir, sess.graph_def)
 
+    def train_loop(self, sfi_iter, margin, sess=None):
+        sess = sess or tf.get_default_session()
+        for sents, features, indices in sfi_iter:
+            start_ts = time.time()
+            feed_dict = {
+                self.model.input_sents: sents,
+                self.model.input_features: features,
+                self.model.input_indices: indices,
+                self.model.margin: margin
+            }
+
+            _, train_loss, current_step, summaries = sess.run(
+                [self.train_op, self.model.total_loss, self.global_step, self.train_summaries],
+                feed_dict=feed_dict)
+            if self.train_summary_writer is not None:
+                self.train_summary_writer.add_summary(summaries, current_step)
+            end_ts = time.time()
+            yield train_loss, current_step, (end_ts - start_ts)

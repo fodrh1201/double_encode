@@ -99,3 +99,13 @@ class DataUtil:
             ranges.append((end, end+i))
             end += i
         return [list(range(start, end)) for start, end in ranges]
+
+    def sfi_iter(self, num_epochs, max_length=25):
+        sents = self.get_pad_sents(max_length=25)
+        features = self.get_features()
+        indices = self.get_cluster_indices()
+
+        sents = np.hstack(sents).reshape([-1, 20])
+
+        for epoch in range(num_epochs):
+            yield (sents, features, indices)
