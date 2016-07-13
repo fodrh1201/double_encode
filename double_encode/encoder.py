@@ -149,31 +149,38 @@ class RNNEncoder(ModelSaver):
             self.f_output = tf.nn.xw_plus_b(self.input_features, W, b)
 
         with tf.variable_scope("loss"):
-            feat_by_sent = tf.matmul(self.f_output, self.s_output, transpose_b=True)
-            feat_by_sent = tf.reshape(feat_by_sent, [-1, 1])
-            feature_size = len(self.input_indices)
-            sents_size = int(self.s_output.get_shape()[0])
-            total_loss = tf.Variable(0.0, dtype=tf.float32, name="total_loss")
-            for i in trange(feature_size, desc='feat_loop'):
-                if self.input_indices[i] == []:
-                    continue
-                else:
-                    indices = [sents_size * i + x for x in self.input_indices[i]]
-                    wrong_mask = self.get_mask(indices, feature_size*sents_size)
-                    corr_val = tf.nn.embedding_lookup(feat_by_sent, indices)
-                    wrong_val = tf.constant(wrong_mask, dtype=tf.float32) * feat_by_sent
-                    loss_list = tf.map_fn(lambda x: tf.maximum(0.0, margin - x + wrong_val), corr_val)
-                    total_loss += tf.reduce_sum(loss_list)
-            self.total_loss = total_loss
+            scores = tf.matmul(self.f_output, self.s_output, transpose_b = True)
+            diagonal = tf.diag_part(scores)
+            cost_s = tf.maximum(0.0, margin - diagonal + scores)
+            cost_im = tf.maximum(0.0, margin - tf.reshape(diagonal, [-1, 1]) + scores)
+            self.total_loss = tf.reduce_sum(cost_s) + tf.reduce_sum(cost_im)
+
+#        with tf.variable_scope("loss"):
+#            feat_by_sent = tf.matmul(self.f_output, self.s_output, transpose_b=True)
+#            feat_by_sent = tf.reshape(feat_by_sent, [-1, 1])
+#            feature_size = len(self.input_indices)
+#            sents_size = int(self.s_output.get_shape()[0])
+#            total_loss = tf.Variable(0.0, dtype=tf.float32, name="total_loss")
+#            for i in trange(feature_size, desc='feat_loop'):
+#                if self.input_indices[i] == []:
+#                    continue
+#                else:
+#                    indices = [sents_size * i + x for x in self.input_indices[i]]
+#                    wrong_mask = self.get_mask(indices, feature_size*sents_size)
+#                    corr_val = tf.nn.embedding_lookup(feat_by_sent, indices)
+#                    wrong_val = tf.constant(wrong_mask, dtype=tf.float32) * feat_by_sent
+#                    loss_list = tf.map_fn(lambda x: tf.maximum(0.0, margin - x + wrong_val), corr_val)
+#                    total_loss += tf.reduce_sum(loss_list)
+#            self.total_loss = total_loss
 
 
-    def get_mask(self, indices, size):
-        corr_mask = np.zeros(size, dtype=np.int32)
-        wrong_mask = np.ones(size, dtype=np.int32)
-        for i in indices:
-            corr_mask[i] = 1
-        wrong_mask = wrong_mask - corr_mask
-        return np.reshape(wrong_mask, [-1, 1])
+#    def get_mask(self, indices, size):
+#        corr_mask = np.zeros(size, dtype=np.int32)
+#        wrong_mask = np.ones(size, dtype=np.int32)
+#        for i in indices:
+#            corr_mask[i] = 1
+#        wrong_mask = wrong_mask - corr_mask
+#        return np.reshape(wrong_mask, [-1, 1])
 
 #        with tf.variable_scope("loss"):
 #            features_size = len(self.input_indices)
