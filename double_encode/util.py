@@ -100,12 +100,41 @@ class DataUtil:
             end += i
         return [list(range(start, end)) for start, end in ranges]
 
+    def batch_iter(self, batch_size, num_epochs, seed=42, fill = False, max_length=25):
+        sents = self.get_pad_sents(max_length=25)
+        features = self.get_features()
+        cluster_indices = self.get_cluster_indices()
+        avail_feat_indices = [i for i in range(len(cluster_indices)) if cluster_indices[i] != []]
+        avail_features = features[avail_feat_indices]
+        avail_cluster_indices = np.array(cluster_indices)[avail_feat_indices]
+
+        random = np.random.RandomState(seed)
+        length = len(avail_features)
+        num_batches_per_epoch = int(length/batch_size)
+        if length % batch_size != 0:
+            num_batches_per_epoch += 1
+        for epoch in range(num_epochs):
+            shuffle_indices = random.permutation(np.arange(length))
+            for batch_num in range(num_batches_per_epoch):
+                start_index = batch_num * batch_size
+                end_index = min((batch_num + 1) * batch_size, length)
+                selected_indices = shuffle_indices[start_index:end_index]
+                if fill is True and end_index >= length:
+                    num_missing = batch_size - len(selected_indices)
+                    selected_indices = np.concatenate([selected_indices, random.randint(0, length, num_missing)])
+                selected_features = avail_features[selected_indices]
+                selected_cluster_indices = avail_cluster_indices[selected_indices]
+                selected_sents_indices = [random.choice(x, 1)[0] for x in selected_cluster_indices]
+                selected_sents = np.array(sents)
+                selected_sents = selected_sents[selected_sents_indices]
+                yield (selected_features, selected_sents)
+
     def sfi_iter(self, num_epochs, max_length=25):
         sents = self.get_pad_sents(max_length=25)
         features = self.get_features()
         indices = self.get_cluster_indices()
 
-        sents = np.hstack(sents).reshape([-1, 20])
+        sents = np.hstack(sents).reshape([-1, max_length])
 
         for epoch in range(num_epochs):
             yield (sents, features, indices)
