@@ -84,10 +84,9 @@ class RNNEncoder(ModelSaver):
         tf.flags.DEFINE_float("dropout_keep_prob_cell_output", 1.0, "RNN cell output connection dropout")
         tf.flags.DEFINE_float("dropout_keep_prob_embedding", 1.0, "Embedding dropout")
 
-    def build_graph(self, input_sents, input_features, input_indices, margin):
+    def build_graph(self, input_sents, input_features, margin):
         self.input_sents = input_sents
         self.input_features = input_features
-        self.input_indices = input_indices
         self.margin = margin
 
         self.dropout_keep_prob_cell_input_t = tf.constant(self.dropout_keep_prob_cell_input)
@@ -235,7 +234,7 @@ class RNNEncoderTrainer:
 
     def train_loop(self, sfi_iter, margin, sess=None):
         sess = sess or tf.get_default_session()
-        for sents, features, indices in sfi_iter:
+        for features, sents in sfi_iter:
             start_ts = time.time()
             feed_dict = {
                 self.model.input_sents: sents,
