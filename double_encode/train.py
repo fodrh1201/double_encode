@@ -46,7 +46,7 @@ session_conf = tf.ConfigProto(
     log_device_placement=FLAGS.log_device_placement)
 sess = tf.Session(graph=graph, config=session_conf)
 
-with graph.as_default(), sess.as_default(), tf.device('/gpu:0'):
+with graph.as_default(), sess.as_default():
     model_params = {"sequence_length": SEQUENCE_LENGTH, "vocabulary_size": VOCABULARY_SIZE, "feature_dim": FEATURE_DIM}
     model_params.update(FLAGS.__flags)
     model = RNNEncoder.from_dict(model_params)
@@ -84,7 +84,7 @@ with graph.as_default(), sess.as_default(), tf.device('/gpu:0'):
     # Training loop
     for train_loss, current_step, time_delta in trainer.train_loop(train_data_iter, 1):
         print("{}: step {}, loss {:g}, ({} epoch/sec)".format(
-            datetime.now().isoformat(), current_step, train_loss, time_delta))
+            datetime.datetime.now().isoformat(), current_step, train_loss, time_delta))
 
         # Checkpoint Model
         if current_step % FLAGS.checkpoint_every == 0:

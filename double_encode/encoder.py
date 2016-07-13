@@ -111,7 +111,7 @@ class RNNEncoder(ModelSaver):
                 input_keep_prob=self.dropout_keep_prob_cell_input_t,
                 output_keep_prob=self.dropout_keep_prob_cell_output_t)
             self.cell = rnn_cell.MultiRNNCell([one_cell] * self.num_layers)
-            self.initial_state = tf.zeros([self.input_sents.get_shape()[0], self.cell.state_size])
+            self.initial_state = tf.zeros([self.batch_size, self.cell.state_size])
             self.rnn_states = [self.initial_state]
             self.rnn_outputs = []
             for i in range(self.sequence_length):
@@ -149,6 +149,7 @@ class RNNEncoder(ModelSaver):
 
         with tf.variable_scope("loss"):
             scores = tf.matmul(self.f_output, self.s_output, transpose_b = True)
+            print(scores.get_shape())
             diagonal = tf.diag_part(scores)
             cost_s = tf.maximum(0.0, margin - diagonal + scores)
             cost_im = tf.maximum(0.0, margin - tf.reshape(diagonal, [-1, 1]) + scores)
@@ -230,7 +231,7 @@ class RNNEncoderTrainer:
             self.train_summaries = tf.merge_summary([summary_total_loss])
             self.train_summary_writer = None
             if train_summary_dir is not None:
-                self.train_summary_writer = tf.train.SummaryWriter(train_summary_dir, sess.graph_def)
+                self.train_summary_writer = tf.train.SummaryWriter(train_summary_dir, sess.graph)
 
     def train_loop(self, sfi_iter, margin, sess=None):
         sess = sess or tf.get_default_session()
@@ -238,9 +239,10 @@ class RNNEncoderTrainer:
             start_ts = time.time()
             feed_dict = {
                 self.model.input_sents: sents,
-                self.model.input_features: features[:3],
+                self.model.input_features: features,
                 self.model.margin: margin
             }
+            print(feed_dict)
 
             _, train_loss, current_step, summaries = sess.run(
                 [self.train_op, self.model.total_loss, self.global_step, self.train_summaries],
