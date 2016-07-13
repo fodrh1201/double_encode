@@ -1,3 +1,4 @@
+from tqdm import trange
 import time
 import numpy as np
 import tensorflow as tf
@@ -69,19 +70,19 @@ class RNNEncoder(ModelSaver):
 
     @staticmethod
     def add_flags():
-        tf.flag.DEFINE_integer("batch_size", 64, "Size for one batch of training/dev examples")
-        tf.flag.DEFINE_integer("s_output_dim", 256, "output dimension for sentences.")
-        tf.flag.DEFINE_integer("f_output_dim", 256, "output dimension for features.")
-        tf.flag.DEFINE_integer("backprop_truncate_after", 256, "Truncated backpropagation after this many steps")
-        tf.flag.DEFINE_integer("embedding_dim", 256, "Dimensionality of embedding layer")
-        tf.flag.DEFINE_integer("hidden_dim", 256, "Dimensionality of the RNN cells")
-        tf.flag.DEFINE_integer("num_layers", 2, "Number of stacked RNN cells")
-        tf.flag.DEFINE_string("cell_class", "LSTM", "LSTM, GRU or BasicRNN")
-        tf.flag.DEFINE_float("dropout_keep_prob_s_output", 1.0, "output dropout for sentences")
-        tf.flag.DEFINE_float("dropout_keep_prob_f_output", 1.0, "output dropout for features")
-        tf.flag.DEFINE_float("dropout_keep_prob_cell_input", 1.0, "RNN cell input connection dropout")
-        tf.flag.DEFINE_float("dropout_keep_prob_cell_output", 1.0, "RNN cell output connection dropout")
-        tf.flag.DEFINE_float("dropout_keep_prob_embedding", 1.0, "Embedding dropout")
+        tf.flags.DEFINE_integer("batch_size", 64, "Size for one batch of training/dev examples")
+        tf.flags.DEFINE_integer("s_output_dim", 256, "output dimension for sentences.")
+        tf.flags.DEFINE_integer("f_output_dim", 256, "output dimension for features.")
+        tf.flags.DEFINE_integer("backprop_truncate_after", 256, "Truncated backpropagation after this many steps")
+        tf.flags.DEFINE_integer("embedding_dim", 256, "Dimensionality of embedding layer")
+        tf.flags.DEFINE_integer("hidden_dim", 256, "Dimensionality of the RNN cells")
+        tf.flags.DEFINE_integer("num_layers", 2, "Number of stacked RNN cells")
+        tf.flags.DEFINE_string("cell_class", "LSTM", "LSTM, GRU or BasicRNN")
+        tf.flags.DEFINE_float("dropout_keep_prob_s_output", 1.0, "output dropout for sentences")
+        tf.flags.DEFINE_float("dropout_keep_prob_f_output", 1.0, "output dropout for features")
+        tf.flags.DEFINE_float("dropout_keep_prob_cell_input", 1.0, "RNN cell input connection dropout")
+        tf.flags.DEFINE_float("dropout_keep_prob_cell_output", 1.0, "RNN cell output connection dropout")
+        tf.flags.DEFINE_float("dropout_keep_prob_embedding", 1.0, "Embedding dropout")
 
     def build_graph(self, input_sents, input_features, input_indices, margin):
         self.input_sents = input_sents
@@ -148,35 +149,62 @@ class RNNEncoder(ModelSaver):
             self.f_output = tf.nn.xw_plus_b(self.input_features, W, b)
 
         with tf.variable_scope("loss"):
-            features_size = len(self.input_indices)
-            sents_size = self.s_output.get_shape()[0]
+            feat_by_sent = tf.matmul(self.f_output, self.s_output, transpose_b=True)
+            feat_by_sent = tf.reshape(feat_by_sent, [-1, 1])
+            feature_size = len(self.input_indices)
+            sents_size = int(self.s_output.get_shape()[0])
             total_loss = tf.Variable(0.0, dtype=tf.float32, name="total_loss")
-            for i in range(features_size):
+            for i in trange(feature_size, desc='feat_loop'):
                 if self.input_indices[i] == []:
                     continue
                 else:
-                    feature = tf.nn.embedding_lookup(self.f_output, i)
-                    not_input_indices = [x for x in range(sents_size) if x not in self.input_indices[i]]
-                    corr_sents = tf.nn.embedding_lookup(self.s_output, self.input_indices[i])
-                    wrong_sents = tf.nn.embedding_lookup(self.s_output, not_input_indices)
-                    total_loss += self.get_f_cluster_loss(corr_sents, wrong_sents, feature, self.margin)
+                    indices = [sents_size * i + x for x in self.input_indices[i]]
+                    wrong_mask = self.get_mask(indices, feature_size*sents_size)
+                    corr_val = tf.nn.embedding_lookup(feat_by_sent, indices)
+                    wrong_val = tf.constant(wrong_mask, dtype=tf.float32) * feat_by_sent
+                    loss_list = tf.map_fn(lambda x: tf.maximum(0.0, margin - x + wrong_val), corr_val)
+                    total_loss += tf.reduce_sum(loss_list)
             self.total_loss = total_loss
 
-    def get_f_cluster_loss(self, corr_sents, wrong_sents, feature, margin):
-        feature = tf.reshape(feature, [-1, 1])
-        corr_s = tf.matmul(corr_sents, feature)
-        corr_s = tf.reshape(corr_s, [-1])
 
-        wrong_s = tf.matmul(wrong_sents, feature)
-        wrong_s = tf.reshape(wrong_s, [-1])
+    def get_mask(self, indices, size):
+        corr_mask = np.zeros(size, dtype=np.int32)
+        wrong_mask = np.ones(size, dtype=np.int32)
+        for i in indices:
+            corr_mask[i] = 1
+        wrong_mask = wrong_mask - corr_mask
+        return np.reshape(wrong_mask, [-1, 1])
 
-        loss = tf.Variable(0.0, dtype=tf.float32, name="sub_loss")
-        for i in range(corr_s.get_shape()[0]):
-            for j in range(wrong_s.get_shape()[0]):
-                s1 = tf.nn.embedding_lookup(corr_s, i)
-                s2 = tf.nn.embedding_lookup(wrong_s, j)
-                loss += tf.maximum(tf.constant(0.0, dtype=tf.float32), margin - s1 + s2)
-        return loss
+#        with tf.variable_scope("loss"):
+#            features_size = len(self.input_indices)
+#            sents_size = self.s_output.get_shape()[0]
+#            total_loss = tf.Variable(0.0, dtype=tf.float32, name="total_loss")
+#            for i in trange(features_size, desc='1st loop'):
+#                if self.input_indices[i] == []:
+#                    continue
+#                else:
+#                    feature = tf.nn.embedding_lookup(self.f_output, i)
+#                    not_input_indices = [x for x in range(sents_size) if x not in self.input_indices[i]]
+#                    corr_sents = tf.nn.embedding_lookup(self.s_output, self.input_indices[i])
+#                    wrong_sents = tf.nn.embedding_lookup(self.s_output, not_input_indices)
+#                    total_loss += self.get_f_cluster_loss(corr_sents, wrong_sents, feature, self.margin)
+#            self.total_loss = total_loss
+#
+#    def get_f_cluster_loss(self, corr_sents, wrong_sents, feature, margin):
+#        feature = tf.reshape(feature, [-1, 1])
+#        corr_s = tf.matmul(corr_sents, feature)
+#        corr_s = tf.reshape(corr_s, [-1])
+#
+#        wrong_s = tf.matmul(wrong_sents, feature)
+#        wrong_s = tf.reshape(wrong_s, [-1])
+#
+#        loss = tf.Variable(0.0, dtype=tf.float32, name="sub_loss")
+#        for i in trange(corr_s.get_shape()[0], desc='2nd loop', leave=False):
+#            for j in trange(wrong_s.get_shape()[0], desc='3rd loop', leave=False):
+#                s1 = tf.nn.embedding_lookup(corr_s, i)
+#                s2 = tf.nn.embedding_lookup(wrong_s, j)
+#                loss += tf.maximum(tf.constant(0.0, dtype=tf.float32), margin - s1 + s2)
+#        return loss
 
 
 class RNNEncoderTrainer:
@@ -190,7 +218,7 @@ class RNNEncoderTrainer:
             tvars = tf.trainable_variables()
             grads, _ = tf.clip_by_global_norm(tf.gradients(model.total_loss, tvars), max_grad_norm)
             self.optimizer = optimizer or tf.train.AdamOptimizer()
-            self.train_op = self.optimizer.apply_gradients(zip(grads, tvar), global_step=self.global_step)
+            self.train_op = self.optimizer.apply_gradients(zip(grads, tvars), global_step=self.global_step)
 
             summary_total_loss = tf.scalar_summary("total_loss", model.total_loss)
             self.train_summaries = tf.merge_summary([summary_total_loss])
@@ -204,8 +232,7 @@ class RNNEncoderTrainer:
             start_ts = time.time()
             feed_dict = {
                 self.model.input_sents: sents,
-                self.model.input_features: features,
-                self.model.input_indices: indices,
+                self.model.input_features: features[:3],
                 self.model.margin: margin
             }
 
