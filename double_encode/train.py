@@ -4,7 +4,7 @@ import pprint
 import util
 import tensorflow as tf
 import datetime
-from encoder import RNNEncoder, RNNEncoderTrainer
+from encoder import RNNEncoder, RNNEncoderTrainer, RNNEncoderEvaluator
 
 pp = pprint.PrettyPrinter(indent=2)
 
@@ -17,6 +17,7 @@ RNNEncoder.add_flags()
 tf.flags.DEFINE_integer("max_sequence_length", 525, "Examples will be padded/truncated to this length")
 tf.flags.DEFINE_integer("num_epochs", 20, "Number of training epochs")
 tf.flags.DEFINE_integer("checkpoint_every", 1, "Evaluate model after this number of steps")
+tf.flags.DEFINE_integer("evaluate_every", 1, "Evaluate model on dev set after this number of steps")
 
 # Session Parameters
 
@@ -35,8 +36,12 @@ data_util = util.DataUtil()
 SEQUENCE_LENGTH = 25
 VOCABULARY_SIZE = 9486
 FEATURE_DIM = 1024
-MARGIN = 0.0
-train_data_iter = data_util.batch_iter(FLAGS.batch_size, FLAGS.num_epochs, fill=True)
+MARGIN = 1.0
+
+
+trF, trCI, teF, teCI = data_util.get_feature_data()
+train_data_iter = data_util.batch_iter(trF, trCI, FLAGS.batch_size, FLAGS.num_epochs, fill=True)
+
 
 # Create a graph and session
 
@@ -61,9 +66,11 @@ with graph.as_default(), sess.as_default():
     timestamp = str(int(time.time()))
     rundir = os.path.abspath(os.path.join(os.path.curdir, "runs", timestamp))
     train_dir = os.path.join(rundir, "train")
+    dev_dir = os.path.join(rundir, "dev")
 
-    # Build the Trainer
+    # Build the Trainer/Evaluator
     trainer = RNNEncoderTrainer(model, train_summary_dir=train_dir)
+    evaluator = RNNEncoderEvaluator(model, summary_dir=dev_dir)
 
     # Saving/Checkpointing
     checkpoint_dir = os.path.join(rundir, "checkpoints")
@@ -85,6 +92,14 @@ with graph.as_default(), sess.as_default():
     for train_loss, current_step, time_delta in trainer.train_loop(train_data_iter, MARGIN):
         print("{}: step {}, loss {:g}, ({} batch/sec)".format(
             datetime.datetime.now().isoformat(), current_step, train_loss, time_delta))
+
+        # Evaluate dev set
+        if current_step % FLAGS.evaluate_every == 0:
+            test_data_iter = data_util.batch_iter(teF, teCI, FLAGS.batch_size, 1, fill=True)
+            dev_iter = test_data_iter
+            mean_loss, _ = evaluator.eval(dev_iter, MARGIN, global_step=trainer.global_step)
+            print("{}: Step {}, Dev Mean Loss: {:g}".format(
+                datetime.datetime.now().isoformat(), current_step, mean_loss))
 
         # Checkpoint Model
         if current_step % FLAGS.checkpoint_every == 0:

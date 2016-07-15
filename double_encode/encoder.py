@@ -155,64 +155,6 @@ class RNNEncoder(ModelSaver):
             cost_im = tf.maximum(0.0, margin - tf.reshape(diagonal, [-1, 1]) + self.scores)
             self.total_loss = tf.reduce_mean(cost_s) + tf.reduce_mean(cost_im)
 
-#        with tf.variable_scope("loss"):
-#            feat_by_sent = tf.matmul(self.f_output, self.s_output, transpose_b=True)
-#            feat_by_sent = tf.reshape(feat_by_sent, [-1, 1])
-#            feature_size = len(self.input_indices)
-#            sents_size = int(self.s_output.get_shape()[0])
-#            total_loss = tf.Variable(0.0, dtype=tf.float32, name="total_loss")
-#            for i in trange(feature_size, desc='feat_loop'):
-#                if self.input_indices[i] == []:
-#                    continue
-#                else:
-#                    indices = [sents_size * i + x for x in self.input_indices[i]]
-#                    wrong_mask = self.get_mask(indices, feature_size*sents_size)
-#                    corr_val = tf.nn.embedding_lookup(feat_by_sent, indices)
-#                    wrong_val = tf.constant(wrong_mask, dtype=tf.float32) * feat_by_sent
-#                    loss_list = tf.map_fn(lambda x: tf.maximum(0.0, margin - x + wrong_val), corr_val)
-#                    total_loss += tf.reduce_sum(loss_list)
-#            self.total_loss = total_loss
-
-
-#    def get_mask(self, indices, size):
-#        corr_mask = np.zeros(size, dtype=np.int32)
-#        wrong_mask = np.ones(size, dtype=np.int32)
-#        for i in indices:
-#            corr_mask[i] = 1
-#        wrong_mask = wrong_mask - corr_mask
-#        return np.reshape(wrong_mask, [-1, 1])
-
-#        with tf.variable_scope("loss"):
-#            features_size = len(self.input_indices)
-#            sents_size = self.s_output.get_shape()[0]
-#            total_loss = tf.Variable(0.0, dtype=tf.float32, name="total_loss")
-#            for i in trange(features_size, desc='1st loop'):
-#                if self.input_indices[i] == []:
-#                    continue
-#                else:
-#                    feature = tf.nn.embedding_lookup(self.f_output, i)
-#                    not_input_indices = [x for x in range(sents_size) if x not in self.input_indices[i]]
-#                    corr_sents = tf.nn.embedding_lookup(self.s_output, self.input_indices[i])
-#                    wrong_sents = tf.nn.embedding_lookup(self.s_output, not_input_indices)
-#                    total_loss += self.get_f_cluster_loss(corr_sents, wrong_sents, feature, self.margin)
-#            self.total_loss = total_loss
-#
-#    def get_f_cluster_loss(self, corr_sents, wrong_sents, feature, margin):
-#        feature = tf.reshape(feature, [-1, 1])
-#        corr_s = tf.matmul(corr_sents, feature)
-#        corr_s = tf.reshape(corr_s, [-1])
-#
-#        wrong_s = tf.matmul(wrong_sents, feature)
-#        wrong_s = tf.reshape(wrong_s, [-1])
-#
-#        loss = tf.Variable(0.0, dtype=tf.float32, name="sub_loss")
-#        for i in trange(corr_s.get_shape()[0], desc='2nd loop', leave=False):
-#            for j in trange(wrong_s.get_shape()[0], desc='3rd loop', leave=False):
-#                s1 = tf.nn.embedding_lookup(corr_s, i)
-#                s2 = tf.nn.embedding_lookup(wrong_s, j)
-#                loss += tf.maximum(tf.constant(0.0, dtype=tf.float32), margin - s1 + s2)
-#        return loss
-
 
 class RNNEncoderTrainer:
 
@@ -251,3 +193,53 @@ class RNNEncoderTrainer:
                 self.train_summary_writer.add_summary(summaries, current_step)
             end_ts = time.time()
             yield train_loss, current_step, (end_ts - start_ts)
+
+
+class RNNEncoderEvaluator:
+
+    def __init__(self, model, summary_dir=None):
+        self.model = model
+        with tf.variable_scope("evaluation"):
+            self.summary_writer = None
+            if summary_dir is not None:
+                self.summary_writer = tf.train.SummaryWriter(summary_dir)
+            self.build_eval_graph()
+
+    def build_eval_graph(self):
+        self.total_loss = tf.Variable(0.0, trainable=False, collections=[])
+        self.example_count = tf.Variable(0.0, trainable=False, collections=[])
+        self.mean_loss = self.total_loss / self.example_count
+
+        inc_total_loss = self.total_loss.assign_add(self.model.total_loss)
+        inc_example_count = self.example_count.assign_add(1)
+
+        with tf.control_dependencies(
+            [self.total_loss.initializer, self.example_count.initializer]):
+            self.eval_reset = tf.no_op()
+
+        with tf.control_dependencies([inc_total_loss, inc_example_count]):
+            self.eval_step = tf.no_op()
+
+        summary_mean_loss = tf.scalar_summary("mean_loss", self.mean_loss)
+        self.summary = tf.merge_summary([summary_mean_loss])
+
+    def eval(self, xy_iter, margin, global_step=None, sess=None):
+        sess = sess or tf.get_default_session()
+        global_step = global_step or tf.no_op()
+        sess.run(self.eval_reset)
+        for features, sents in xy_iter:
+            feed_dict = {
+                self.model.input_features: features,
+                self.model.input_sents: sents,
+                self.model.margin: margin,
+                self.model.dropout_keep_prob_s_output_t: 1.0,
+                self.model.dropout_keep_prob_f_output_t: 1.0,
+                self.model.dropout_keep_prob_cell_input_t: 1.0,
+                self.model.dropout_keep_prob_cell_output_t: 1.0,
+                self.model.dropout_keep_prob_embedding_t: 1.0
+            }
+            sess.run(self.eval_step, feed_dict=feed_dict)
+        loss, summaries, current_step, total_loss = sess.run([self.mean_loss, self.summary, global_step, self.example_count])
+        if self.summary_writer is not None:
+            self.summary_writer.add_summary(summaries, current_step)
+        return [loss, current_step]

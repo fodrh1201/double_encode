@@ -92,10 +92,13 @@ class DataUtil:
         return np.array(features)
 
     def modify_nan(self, feature):
+        nan = []
         for i, elem in enumerate(feature):
             if np.isnan(elem):
-                print(elem)
+                nan.append(elem)
                 feature[i] = 0
+        if len(nan) > 0:
+            print(len(nan))
         return feature
 
     def get_cluster_indices(self, max_length=None):
@@ -107,14 +110,22 @@ class DataUtil:
             end += i
         return [list(range(start, end)) for start, end in ranges]
 
-    def batch_iter(self, batch_size, num_epochs, seed=42, fill = False, max_length=25):
-        sents = self.get_pad_sents(max_length=25)
+    def get_feature_data(self):
         features = self.get_features()
         cluster_indices = self.get_cluster_indices()
         avail_feat_indices = [i for i in range(len(cluster_indices)) if cluster_indices[i] != []]
         avail_features = features[avail_feat_indices]
         avail_cluster_indices = np.array(cluster_indices)[avail_feat_indices]
 
+        num_of_train = int(2 * len(features) / 3)
+        trF = avail_features[:num_of_train]
+        trCI = avail_cluster_indices[:num_of_train]
+        teF = avail_features[num_of_train:]
+        teCI = avail_cluster_indices[num_of_train:]
+        return trF, trCI, teF, teCI
+
+    def batch_iter(self, avail_features, avail_cluster_indices, batch_size, num_epochs, seed=2, fill = False, max_length=25):
+        sents = self.get_pad_sents(max_length=25)
         random = np.random.RandomState(seed)
         length = len(avail_features)
         num_batches_per_epoch = int(length/batch_size)
