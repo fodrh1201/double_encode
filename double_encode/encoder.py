@@ -148,12 +148,12 @@ class RNNEncoder(ModelSaver):
             self.f_output = tf.nn.xw_plus_b(self.input_features, W, b)
 
         with tf.variable_scope("loss"):
-            scores = tf.matmul(self.f_output, self.s_output, transpose_b = True)
-            print(scores.get_shape())
-            diagonal = tf.diag_part(scores)
-            cost_s = tf.maximum(0.0, margin - diagonal + scores)
-            cost_im = tf.maximum(0.0, margin - tf.reshape(diagonal, [-1, 1]) + scores)
-            self.total_loss = tf.reduce_sum(cost_s) + tf.reduce_sum(cost_im)
+            self.scores = tf.matmul(self.f_output, self.s_output, transpose_b = True)
+            print(self.scores.get_shape())
+            diagonal = tf.diag_part(self.scores)
+            cost_s = tf.maximum(0.0, margin - diagonal + self.scores)
+            cost_im = tf.maximum(0.0, margin - tf.reshape(diagonal, [-1, 1]) + self.scores)
+            self.total_loss = tf.reduce_mean(cost_s) + tf.reduce_mean(cost_im)
 
 #        with tf.variable_scope("loss"):
 #            feat_by_sent = tf.matmul(self.f_output, self.s_output, transpose_b=True)
@@ -242,11 +242,11 @@ class RNNEncoderTrainer:
                 self.model.input_features: features,
                 self.model.margin: margin
             }
-            print(feed_dict)
 
-            _, train_loss, current_step, summaries = sess.run(
-                [self.train_op, self.model.total_loss, self.global_step, self.train_summaries],
+            _, train_loss, current_step, summaries, scores = sess.run(
+                [self.train_op, self.model.total_loss, self.global_step, self.train_summaries, self.model.s_output],
                 feed_dict=feed_dict)
+
             if self.train_summary_writer is not None:
                 self.train_summary_writer.add_summary(summaries, current_step)
             end_ts = time.time()

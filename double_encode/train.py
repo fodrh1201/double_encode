@@ -35,8 +35,8 @@ data_util = util.DataUtil()
 SEQUENCE_LENGTH = 25
 VOCABULARY_SIZE = 9486
 FEATURE_DIM = 1024
+MARGIN = 0.0
 train_data_iter = data_util.batch_iter(FLAGS.batch_size, FLAGS.num_epochs, fill=True)
-input_indices = data_util.get_cluster_indices()[:3]
 
 # Create a graph and session
 
@@ -82,8 +82,8 @@ with graph.as_default(), sess.as_default():
     # Initialize variables
     sess.run(tf.initialize_all_variables())
     # Training loop
-    for train_loss, current_step, time_delta in trainer.train_loop(train_data_iter, 1):
-        print("{}: step {}, loss {:g}, ({} epoch/sec)".format(
+    for train_loss, current_step, time_delta in trainer.train_loop(train_data_iter, MARGIN):
+        print("{}: step {}, loss {:g}, ({} batch/sec)".format(
             datetime.datetime.now().isoformat(), current_step, train_loss, time_delta))
 
         # Checkpoint Model

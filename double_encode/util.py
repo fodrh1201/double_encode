@@ -88,8 +88,15 @@ class DataUtil:
         for clip, path in clips_path.items():
             with open(path, 'rb') as f:
                 feature = cPickle.load(f, encoding='latin1')
-                features.append(feature.reshape(-1))
+                features.append(self.modify_nan(feature.reshape(-1)))
         return np.array(features)
+
+    def modify_nan(self, feature):
+        for i, elem in enumerate(feature):
+            if np.isnan(elem):
+                print(elem)
+                feature[i] = 0
+        return feature
 
     def get_cluster_indices(self, max_length=None):
         counts = self.get_sent_list_count()
